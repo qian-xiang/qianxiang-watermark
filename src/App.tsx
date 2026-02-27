@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Upload, 
   Download, 
@@ -55,6 +55,13 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  const canvasCallbackRef = useCallback((node: HTMLCanvasElement | null) => {
+    if (node !== null) {
+      canvasRef.current = node;
+      drawCanvas();
+    }
+  }, [image, watermarks]);
 
   const selectedWatermark = watermarks.find(w => w.id === selectedId);
 
@@ -542,7 +549,7 @@ export default function App() {
             >
               <div className={`relative max-w-full max-h-full shadow-2xl rounded-2xl overflow-hidden bg-white border border-black/5 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}>
                 <canvas
-                  ref={canvasRef}
+                  ref={canvasCallbackRef}
                   onMouseDown={handleStart}
                   onMouseMove={handleMove}
                   onMouseUp={handleEnd}
