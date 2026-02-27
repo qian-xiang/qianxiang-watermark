@@ -15,26 +15,77 @@ import {
   Image as ImageIcon,
   Settings2,
   ChevronRight,
-  LayoutGrid
+  LayoutGrid,
+  Plus,
+  Layers
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 type Position = 'top-left' | 'top-center' | 'top-right' | 'center' | 'bottom-left' | 'bottom-center' | 'bottom-right' | 'custom';
 
+interface Watermark {
+  id: string;
+  text: string;
+  fontSize: number;
+  color: string;
+  opacity: number;
+  position: Position;
+  customX: number;
+  customY: number;
+  rotation: number;
+}
+
 export default function App() {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
-  const [text, setText] = useState('水印文字');
-  const [fontSize, setFontSize] = useState(40);
-  const [color, setColor] = useState('#ffffff');
-  const [opacity, setOpacity] = useState(0.5);
-  const [position, setPosition] = useState<Position>('bottom-right');
-  const [customX, setCustomX] = useState(50);
-  const [customY, setCustomY] = useState(50);
-  const [rotation, setRotation] = useState(0);
+  const [watermarks, setWatermarks] = useState<Watermark[]>([
+    {
+      id: '1',
+      text: '水印文字',
+      fontSize: 40,
+      color: '#ffffff',
+      opacity: 0.5,
+      position: 'bottom-right',
+      customX: 50,
+      customY: 50,
+      rotation: 0,
+    }
+  ]);
+  const [selectedId, setSelectedId] = useState<string | null>('1');
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  const selectedWatermark = watermarks.find(w => w.id === selectedId);
+
+  const updateSelectedWatermark = (updates: Partial<Watermark>) => {
+    if (!selectedId) return;
+    setWatermarks(prev => prev.map(w => w.id === selectedId ? { ...w, ...updates } : w));
+  };
+
+  const addWatermark = () => {
+    const newId = Math.random().toString(36).substr(2, 9);
+    const newWatermark: Watermark = {
+      id: newId,
+      text: '新水印',
+      fontSize: 40,
+      color: '#ffffff',
+      opacity: 0.5,
+      position: 'center',
+      customX: 50,
+      customY: 50,
+      rotation: 0,
+    };
+    setWatermarks(prev => [...prev, newWatermark]);
+    setSelectedId(newId);
+  };
+
+  const deleteWatermark = (id: string) => {
+    setWatermarks(prev => prev.filter(w => w.id !== id));
+    if (selectedId === id) {
+      setSelectedId(watermarks.find(w => w.id !== id)?.id || null);
+    }
+  };
 
   // Helper to get coordinates relative to canvas
   const getCanvasCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
@@ -56,14 +107,14 @@ export default function App() {
   };
 
   const handleStart = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!image) return;
+    if (!image || !selectedId) return;
     setIsDragging(true);
-    setPosition('custom');
+    updateSelectedWatermark({ position: 'custom' });
     handleMove(e);
   };
 
   const handleMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDragging || !image || !canvasRef.current) return;
+    if (!isDragging || !image || !canvasRef.current || !selectedId) return;
     
     const { x, y } = getCanvasCoordinates(e);
     
@@ -71,8 +122,7 @@ export default function App() {
     const pX = Math.max(0, Math.min(100, (x / canvasRef.current.width) * 100));
     const pY = Math.max(0, Math.min(100, (y / canvasRef.current.height) * 100));
     
-    setCustomX(pX);
-    setCustomY(pY);
+    updateSelectedWatermark({ customX: pX, customY: pY });
   };
 
   const handleEnd = () => {
@@ -106,68 +156,72 @@ export default function App() {
     // Draw background image
     ctx.drawImage(image, 0, 0);
 
-    // Configure text style
-    ctx.font = `${fontSize}px Inter, sans-serif`;
-    ctx.fillStyle = color;
-    ctx.globalAlpha = opacity;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    // Draw each watermark
+    watermarks.forEach(wm => {
+      ctx.save();
+      
+      // Configure text style
+      ctx.font = `${wm.fontSize}px Inter, sans-serif`;
+      ctx.fillStyle = wm.color;
+      ctx.globalAlpha = wm.opacity;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
 
-    // Calculate position
-    let x = 0;
-    let y = 0;
-    const padding = fontSize;
+      // Calculate position
+      let x = 0;
+      let y = 0;
+      const padding = wm.fontSize;
 
-    switch (position) {
-      case 'top-left':
-        x = padding + ctx.measureText(text).width / 2;
-        y = padding;
-        ctx.textAlign = 'left';
-        break;
-      case 'top-center':
-        x = canvas.width / 2;
-        y = padding;
-        break;
-      case 'top-right':
-        x = canvas.width - padding - ctx.measureText(text).width / 2;
-        y = padding;
-        ctx.textAlign = 'right';
-        break;
-      case 'center':
-        x = canvas.width / 2;
-        y = canvas.height / 2;
-        break;
-      case 'bottom-left':
-        x = padding + ctx.measureText(text).width / 2;
-        y = canvas.height - padding;
-        ctx.textAlign = 'left';
-        break;
-      case 'bottom-center':
-        x = canvas.width / 2;
-        y = canvas.height - padding;
-        break;
-      case 'bottom-right':
-        x = canvas.width - padding - ctx.measureText(text).width / 2;
-        y = canvas.height - padding;
-        ctx.textAlign = 'right';
-        break;
-      case 'custom':
-        x = (customX / 100) * canvas.width;
-        y = (customY / 100) * canvas.height;
-        break;
-    }
+      switch (wm.position) {
+        case 'top-left':
+          x = padding + ctx.measureText(wm.text).width / 2;
+          y = padding;
+          ctx.textAlign = 'left';
+          break;
+        case 'top-center':
+          x = canvas.width / 2;
+          y = padding;
+          break;
+        case 'top-right':
+          x = canvas.width - padding - ctx.measureText(wm.text).width / 2;
+          y = padding;
+          ctx.textAlign = 'right';
+          break;
+        case 'center':
+          x = canvas.width / 2;
+          y = canvas.height / 2;
+          break;
+        case 'bottom-left':
+          x = padding + ctx.measureText(wm.text).width / 2;
+          y = canvas.height - padding;
+          ctx.textAlign = 'left';
+          break;
+        case 'bottom-center':
+          x = canvas.width / 2;
+          y = canvas.height - padding;
+          break;
+        case 'bottom-right':
+          x = canvas.width - padding - ctx.measureText(wm.text).width / 2;
+          y = canvas.height - padding;
+          ctx.textAlign = 'right';
+          break;
+        case 'custom':
+          x = (wm.customX / 100) * canvas.width;
+          y = (wm.customY / 100) * canvas.height;
+          break;
+      }
 
-    // Apply rotation
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate((rotation * Math.PI) / 180);
-    ctx.fillText(text, 0, 0);
-    ctx.restore();
+      // Apply rotation
+      ctx.translate(x, y);
+      ctx.rotate((wm.rotation * Math.PI) / 180);
+      ctx.fillText(wm.text, 0, 0);
+      ctx.restore();
+    });
   };
 
   useEffect(() => {
     drawCanvas();
-  }, [image, text, fontSize, color, opacity, position, customX, customY, rotation]);
+  }, [image, watermarks]);
 
   const downloadImage = () => {
     const canvas = canvasRef.current;
@@ -198,160 +252,219 @@ export default function App() {
         </div>
 
         <div className="p-6 space-y-8">
-          {/* Text Input */}
+          {/* Watermarks List */}
           <section className="space-y-4">
-            <div className="flex items-center gap-2 text-black/60">
-              <Type size={16} />
-              <span className="text-xs font-bold uppercase tracking-widest">内容</span>
-            </div>
-            <input
-              type="text"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="输入水印文字..."
-              className="w-full px-4 py-3 bg-[#F5F5F7] rounded-xl border-none focus:ring-2 focus:ring-black/5 outline-none text-sm transition-all"
-            />
-          </section>
-
-          {/* Styling */}
-          <section className="space-y-4">
-            <div className="flex items-center gap-2 text-black/60">
-              <Settings2 size={16} />
-              <span className="text-xs font-bold uppercase tracking-widest">样式</span>
-            </div>
-            
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <div className="flex justify-between text-[10px] font-bold text-black/40 uppercase">
-                  <span>大小</span>
-                  <span>{fontSize}px</span>
-                </div>
-                <input
-                  type="range"
-                  min="10"
-                  max="200"
-                  value={fontSize}
-                  onChange={(e) => setFontSize(parseInt(e.target.value))}
-                  className="w-full accent-black"
-                />
+            <div className="flex items-center justify-between text-black/60">
+              <div className="flex items-center gap-2">
+                <Layers size={16} />
+                <span className="text-xs font-bold uppercase tracking-widest">水印列表</span>
               </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between text-[10px] font-bold text-black/40 uppercase">
-                  <span>不透明度</span>
-                  <span>{Math.round(opacity * 100)}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={opacity}
-                  onChange={(e) => setOpacity(parseFloat(e.target.value))}
-                  className="w-full accent-black"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between text-[10px] font-bold text-black/40 uppercase">
-                  <span>旋转角度</span>
-                  <span>{rotation}°</span>
-                </div>
-                <input
-                  type="range"
-                  min="-180"
-                  max="180"
-                  value={rotation}
-                  onChange={(e) => setRotation(parseInt(e.target.value))}
-                  className="w-full accent-black"
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-black/40 uppercase">颜色</span>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={color}
-                    onChange={(e) => setColor(e.target.value)}
-                    className="w-8 h-8 rounded-lg border-none cursor-pointer overflow-hidden"
-                  />
-                  <span className="text-xs font-mono text-black/60">{color.toUpperCase()}</span>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Position */}
-          <section className="space-y-4">
-            <div className="flex items-center gap-2 text-black/60">
-              <LayoutGrid size={16} />
-              <span className="text-xs font-bold uppercase tracking-widest">位置</span>
-            </div>
-            
-            <div className="grid grid-cols-3 gap-2">
-              {(['top-left', 'top-center', 'top-right', 'center', 'bottom-left', 'bottom-center', 'bottom-right'] as Position[]).map((pos) => (
-                <button
-                  key={pos}
-                  onClick={() => setPosition(pos)}
-                  className={`h-10 rounded-lg border flex items-center justify-center transition-all ${
-                    position === pos 
-                    ? 'bg-black border-black text-white shadow-lg shadow-black/20' 
-                    : 'bg-white border-black/10 text-black/40 hover:border-black/30'
-                  }`}
-                >
-                  <div className={`w-1.5 h-1.5 rounded-full bg-current ${pos === 'center' ? 'scale-150' : ''}`} />
-                </button>
-              ))}
-              <button
-                onClick={() => setPosition('custom')}
-                className={`col-span-2 h-10 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-all ${
-                  position === 'custom' 
-                  ? 'bg-black border-black text-white shadow-lg shadow-black/20' 
-                  : 'bg-white border-black/10 text-black/40 hover:border-black/30'
-                }`}
+              <button 
+                onClick={addWatermark}
+                className="p-1 hover:bg-black/5 rounded-lg transition-colors text-black"
+                title="添加新水印"
               >
-                自定义坐标
+                <Plus size={18} />
               </button>
             </div>
-
-            {position === 'custom' && (
-              <motion.div 
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                className="space-y-4 pt-2"
-              >
-                <div className="space-y-2">
-                  <div className="flex justify-between text-[10px] font-bold text-black/40 uppercase">
-                    <span>横向位置 (X)</span>
-                    <span>{customX}%</span>
+            
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+              {watermarks.map((wm) => (
+                <div 
+                  key={wm.id}
+                  onClick={() => setSelectedId(wm.id)}
+                  className={`group flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${
+                    selectedId === wm.id 
+                    ? 'bg-black text-white border-black shadow-md' 
+                    : 'bg-[#F5F5F7] text-black/60 border-transparent hover:border-black/10'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <Type size={14} className={selectedId === wm.id ? 'text-white/60' : 'text-black/20'} />
+                    <span className="text-xs font-medium truncate">{wm.text || '无文字'}</span>
                   </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={customX}
-                    onChange={(e) => setCustomX(parseInt(e.target.value))}
-                    className="w-full accent-black"
-                  />
+                  {watermarks.length > 1 && (
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteWatermark(wm.id);
+                      }}
+                      className={`p-1.5 rounded-lg transition-colors ${
+                        selectedId === wm.id 
+                        ? 'hover:bg-white/10 text-white/40 hover:text-white' 
+                        : 'hover:bg-black/5 text-black/20 hover:text-red-500'
+                      }`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-[10px] font-bold text-black/40 uppercase">
-                    <span>纵向位置 (Y)</span>
-                    <span>{customY}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={customY}
-                    onChange={(e) => setCustomY(parseInt(e.target.value))}
-                    className="w-full accent-black"
-                  />
-                </div>
-              </motion.div>
-            )}
+              ))}
+            </div>
           </section>
+
+          {selectedWatermark && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-8"
+            >
+              {/* Text Input */}
+              <section className="space-y-4">
+                <div className="flex items-center gap-2 text-black/60">
+                  <Type size={16} />
+                  <span className="text-xs font-bold uppercase tracking-widest">内容</span>
+                </div>
+                <input
+                  type="text"
+                  value={selectedWatermark.text}
+                  onChange={(e) => updateSelectedWatermark({ text: e.target.value })}
+                  placeholder="输入水印文字..."
+                  className="w-full px-4 py-3 bg-[#F5F5F7] rounded-xl border-none focus:ring-2 focus:ring-black/5 outline-none text-sm transition-all"
+                />
+              </section>
+
+              {/* Styling */}
+              <section className="space-y-4">
+                <div className="flex items-center gap-2 text-black/60">
+                  <Settings2 size={16} />
+                  <span className="text-xs font-bold uppercase tracking-widest">样式</span>
+                </div>
+                
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-[10px] font-bold text-black/40 uppercase">
+                      <span>大小</span>
+                      <span>{selectedWatermark.fontSize}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="10"
+                      max="200"
+                      value={selectedWatermark.fontSize}
+                      onChange={(e) => updateSelectedWatermark({ fontSize: parseInt(e.target.value) })}
+                      className="w-full accent-black"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-[10px] font-bold text-black/40 uppercase">
+                      <span>不透明度</span>
+                      <span>{Math.round(selectedWatermark.opacity * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={selectedWatermark.opacity}
+                      onChange={(e) => updateSelectedWatermark({ opacity: parseFloat(e.target.value) })}
+                      className="w-full accent-black"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-[10px] font-bold text-black/40 uppercase">
+                      <span>旋转角度</span>
+                      <span>{selectedWatermark.rotation}°</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="-180"
+                      max="180"
+                      value={selectedWatermark.rotation}
+                      onChange={(e) => updateSelectedWatermark({ rotation: parseInt(e.target.value) })}
+                      className="w-full accent-black"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-black/40 uppercase">颜色</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={selectedWatermark.color}
+                        onChange={(e) => updateSelectedWatermark({ color: e.target.value })}
+                        className="w-8 h-8 rounded-lg border-none cursor-pointer overflow-hidden"
+                      />
+                      <span className="text-xs font-mono text-black/60">{selectedWatermark.color.toUpperCase()}</span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Position */}
+              <section className="space-y-4">
+                <div className="flex items-center gap-2 text-black/60">
+                  <LayoutGrid size={16} />
+                  <span className="text-xs font-bold uppercase tracking-widest">位置</span>
+                </div>
+                
+                <div className="grid grid-cols-3 gap-2">
+                  {(['top-left', 'top-center', 'top-right', 'center', 'bottom-left', 'bottom-center', 'bottom-right'] as Position[]).map((pos) => (
+                    <button
+                      key={pos}
+                      onClick={() => updateSelectedWatermark({ position: pos })}
+                      className={`h-10 rounded-lg border flex items-center justify-center transition-all ${
+                        selectedWatermark.position === pos 
+                        ? 'bg-black border-black text-white shadow-lg shadow-black/20' 
+                        : 'bg-white border-black/10 text-black/40 hover:border-black/30'
+                      }`}
+                    >
+                      <div className={`w-1.5 h-1.5 rounded-full bg-current ${pos === 'center' ? 'scale-150' : ''}`} />
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => updateSelectedWatermark({ position: 'custom' })}
+                    className={`col-span-2 h-10 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-all ${
+                      selectedWatermark.position === 'custom' 
+                      ? 'bg-black border-black text-white shadow-lg shadow-black/20' 
+                      : 'bg-white border-black/10 text-black/40 hover:border-black/30'
+                    }`}
+                  >
+                    自定义坐标
+                  </button>
+                </div>
+
+                {selectedWatermark.position === 'custom' && (
+                  <motion.div 
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="space-y-4 pt-2"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-[10px] font-bold text-black/40 uppercase">
+                        <span>横向位置 (X)</span>
+                        <span>{Math.round(selectedWatermark.customX)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={selectedWatermark.customX}
+                        onChange={(e) => updateSelectedWatermark({ customX: parseInt(e.target.value) })}
+                        className="w-full accent-black"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-[10px] font-bold text-black/40 uppercase">
+                        <span>纵向位置 (Y)</span>
+                        <span>{Math.round(selectedWatermark.customY)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={selectedWatermark.customY}
+                        onChange={(e) => updateSelectedWatermark({ customY: parseInt(e.target.value) })}
+                        className="w-full accent-black"
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </section>
+            </motion.div>
+          )}
         </div>
 
         {/* Action Buttons */}
